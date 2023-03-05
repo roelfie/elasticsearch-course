@@ -27,7 +27,7 @@ Sharding is _specified at the index level_. The default number of shards is 1.
 
 You can not simply add an extra shard to an existing index. This search algorithm will then fail to find documents (see the section on routing below). Use the _Split_ or _Shrink_ API to increase or decrease the number of shards of an existing index.
 
-The `/_cat/indices API` returns a `pri` (primary) and a `rep` (replicas) column. This indicates how many shards an index has.
+The `/_cat/indices` API returns a `pri` (primary) and a `rep` (replicas) column. This indicates how many shards an index has.
 
 #### Replication
 
@@ -156,8 +156,6 @@ GET /products/_search
 
 ### More examples
 
-Examples:
-
  * [upsert](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Managing%20Documents/upserts.md)
  * [replace](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Managing%20Documents/replacing-documents.md)
  * [update by query](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Managing%20Documents/update-by-query.md)
@@ -218,3 +216,355 @@ This form of optimistic locking is used by elasticsearch when it performs an [Up
 
 
 
+## Section 4: Mapping & Analysis
+
+### Analyzers
+
+This section only applies to fields of type `text`.
+
+An [Analyzer](https://www.elastic.co/guide/en/elasticsearch/reference/current/analyzer.html) contains zero or more character filters and one tokenizer.
+
+A [Character Filter](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-charfilters.html) preprocesses a stream of characters before it is passed to the tokenizer. For instance to [strip HTML](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-htmlstrip-charfilter.html).
+
+A [Tokenizer](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-tokenizers.html) splits the text into words (and possibly removes characters like punctiation and whitespace) and stores each token's offset.
+
+A [Token Filter](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-tokenfilters.html) can add, remove or modify tokens. Example: lowercase
+
+The [Analyze API](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-analyze.html) performs [analysis](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis.html) on a text string and returns the resulting tokens.
+
+Here is a [list of built-in analyzers](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-analyzers.html).
+
+#### Standard Analyzer
+
+Three ways of performing an analysis with the standard analyzer:
+
+```
+POST /_analyze
+{
+  "text": "3 traveling   PIGS...in a brwon café!"
+}
+```
+
+```
+POST /_analyze
+{
+  "text": "3 traveling   PIGS...in a brwon café!",
+  "analyzer": "standard"
+}
+```
+
+```
+POST /_analyze
+{
+  "text": "3 traveling   PIGS...in a brwon café!",
+  "char_filter": [],
+  "tokenizer": "standard",
+  "filter": ["lowercase"]
+}
+```
+
+The resulting tokens are `["3", "traveling", "pigs", "in", "a", "brwon", "café"]`.
+
+#### Custom analyzers
+
+ * [configure a custom analyzer](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Mapping%20%26%20Analysis/creating-custom-analyzers.md) during index creation
+ * [add an analyzer to an existing index](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Mapping%20%26%20Analysis/adding-analyzers-to-existing-indices.md)
+   * The analyzer is a [static setting](https://www.elastic.co/guide/en/elasticsearch/reference/current/index-modules.html) of the index. Static settings can only be changed on a [closed index](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-close.html) (one that blocks read & write operations). You can close an index as follows:
+    * `POST /my-index/_close`
+    * `POST /my-index/_open`
+ * [update an existing analyzer](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Mapping%20%26%20Analysis/updating-analyzers.md)
+
+__Make sure to reindex all document when you update an analyzer:__ `POST /my-index/_update_by_query?conflicts=proceed`. Otherwise half of your documents were indexed using the old analyzer, and the other half with the new analyzer. This may yield unpredictable search results.
+
+#### Inverted Indices
+
+An inverted index is a mapping between terms (i.e. tokens) and which documents contain them. They store 
+ * terms
+ * document Ids
+ * relevance
+
+Each `text` field has a dedicated inverted index.
+
+NB: numeric, date and geospatial fields use BKD trees instead of inverted indices.
+
+### Mappings
+
+Defines the structure of documents: 
+ * fields 
+ * [data types](https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-types.html).
+ * index configuration
+
+#### Coercion
+
+[coercion](https://www.elastic.co/guide/en/elasticsearch/reference/current/coerce.html) is enabled by default. You can configure an index or field to disable coercion.
+
+#### Dynamic mapping
+
+With dynamic mapping, the field type in the first indexed document determines the data type that will be registered in the mapping: `"price": "7.50"` will cause the `price` field to be mapped as a `string`. 
+
+NB: even though the initial `"7.50"` represents a numeric value, it will not be automatically coerced into a float.
+
+Whenever you index a new document that contains a `price` in a different format (e.g. `"price": 7.50`) it will be coerced into the original data type (in this case `string`).
+
+##### Configuring dynamic mapping
+
+You can disable dynamic mapping (at the index level or field level).
+
+By defining an explicit mapping for field X, and disabling dynamic mapping for the entire index, any other field Y, Z, .. will be excluded from indexing.
+
+```
+POST /people
+{
+  "mappings": {
+    "dynamic": false, 
+    "properties": {
+      "first_name": {
+        "type": "text"
+      }
+    }
+  }
+}
+```
+
+So those fields will still be part of the `_source` document, but you will just not be able to search, aggregate, sort on it.
+
+Possible `dynamic` values:
+ * true (default)
+ * false
+ * "strict" (Elastic will reject documents with unmapped fields)
+
+##### Dynamic templates
+
+With [dynamic templates](https://www.elastic.co/guide/en/elasticsearch/reference/current/dynamic-templates.html) you can override the default dynamic mapping behavior based on field naming conventions ([example](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Mapping%20%26%20Analysis/dynamic-templates.md#using-match-and-unmatch)).
+
+#### Explicit mapping
+
+[Explicit mapping](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/explicit-mapping.html) is defined by the user on index creation time:
+
+```
+PUT /books
+{
+  "mappings": {
+    "properties": {
+      "title":             { "type": "text" }, 
+      "publisher.name":    { "type": "keyword" }, 
+      "publisher.address": { "type": "text" }, 
+      "author":    { 
+        "properties": {
+          "name":         { "type": "text" }, 
+          "email":        { "type": "keyword" },
+        }
+      }
+    }
+  }
+}
+```
+
+Notice how you can combine nested documents and dot-notation.
+
+You can also [add a field to an existing mapping](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/explicit-mapping.html#add-field-mapping).
+
+#### Mapping Recommendations
+
+ * To avoid unexpected behavior: 
+   * use explicit mapping and set `"dynamic": "strict"`
+   * disable coercion
+ * To save disk space
+   * when possible, choose between `text` and `keyword`, not both (the default dynamic behavior)
+   * set `"doc_values": false"` is you don't need sorting, aggregations and scripting on a field
+   * set `"norms": false` if you don't need relevance scoring for a field 
+   * set `"index": false` if you don't need to filter on a field
+
+
+#### Retrieve mapping
+
+```
+GET /books/_mapping
+GET /books/_mapping/field/author
+GET /books/_mapping/field/author.email
+```
+
+#### `object` and `nested` data types
+
+The `object` data type is used for nested documents. Apache Lucene (underlying Elasticsearch) does not support. In Apache Lucene nested properties are transformed to dot-notation.
+
+Use the [`nested` data type](https://www.elastic.co/guide/en/elasticsearch/reference/current/nested.html) if your document contains arrays of objects. To query `nested` fields you must use a [`nested` query](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-nested-query.html).
+
+`nested` objects are stored as hidden documents in Lucene. If you index a document with an array of 10 nested objects, 11 documents will be indexed in total.
+
+#### `keyword` data type
+
+Used for
+ * exact matching (e.g. enums)
+ * filtering
+ * aggregation
+ * sorting
+ 
+You can customize the `keyword` analyzer to use the `lowercase` token filter to transform keywords to lowercase.
+This is useful if you want to perform case-insensitive exact matches (example: email address).
+
+For full test searches you must use the `text` data type.
+
+The `keyword` analyzer is a no-op analyzer: It ouputs the unmodified string as a single token.
+
+#### No `array` data type
+
+Elastic does not know an array data type: For a field `tags` of type `string`, both `"tags": "Smartphone"` and `"tags": [ "Smartphone", "Electronics" ]` are valid.
+
+#### mapping parameters
+
+With [mapping parameters](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/mapping-params.html) you can configure field mappings.
+
+ * `doc_values`
+   * The inverted index is used for queries.
+   * The [doc_values](https://www.elastic.co/guide/en/elasticsearch/reference/current/doc-values.html) is another data structure (per index) that is used for aggregation, scripting and sorting. Enabled by default.
+   * If you have a large index and you don't need aggregation or sorting for it, consider disabled its `doc_values` to save disk space. It can be specified at field level.
+   * Caution: Changing the `doc_values` parameter requires all documents to be reindexed!
+ * `norms`
+   * The `norms` mapping parameter is used for relevance scoring. Enabled by default.
+   * You can disable `norms` for fields that are not part of relevance scoring to save disk space.
+ * `index`
+   * The `norms` mapping parameter specifies if a field should be indexed. Enabled by default.
+   * You can disable `norms` if you don't want to search on a field. The field will still be part of the `_source`. And you can still aggregate and sort on the field.
+ * `null_value`
+   * Null values can not be indexed or searched in Elasticsearch. If you want to be able to search or index them, specify a `null_value` (i.e. a replacement of the null value indicating that it's null).
+ * `copy_to`
+   * Allows you to copy multiple fields into a new 'group' field (for instance `full_name` based on `first_name` and `last_name`).
+
+### Reindexing documents with the Reindex API
+
+It is not possible to update existing mappings. The reason is that different data types generally require a different underlying data structure (for instance `text` ends up in an inverted index while numeric fields are indexed into a BKD tree).
+
+If you want to change the data type of a field, you can use the [Reindex API](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html). 
+
+ * Step 1: Get the original mappings: `GET /products/_mappings`
+ * Step 2: Create the new index: `PUT /products_new`
+   * add the `"mappings: { ... }"` from the original index to the new index, with the modified data type(s).
+ * Step 3: Use the Reindex API: 
+    ```
+    POST /_reindex
+    {
+      "source": {
+        "index": "products"
+      },
+      "dest: {
+        "index": "products_new"
+      },
+      "script": {
+        "source": """
+          if (ctx._source.some.field != null) {
+            // do something with some.field
+          }
+        """
+      }
+    }
+    ```
+
+You can also use the `reindex` API to remove fields from documents. You do this by specifying the fields that should be copied from the source to the target index:
+```
+POST /_reindex
+{
+  "source": {
+    "index": "products",
+    "_source": ["product_id", "brand", "model"]
+  },
+  "dest: {
+    "index": "products_new"
+  }
+}
+```
+
+NB: The destination index of a `_reindex` need not be empty. We can reindex documents into an existing non-empty index.
+
+If you want to reindex millions of documents at once, check the documentation for things like [throttling](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html#docs-reindex-throttle) and slicing to limit performance impact.
+
+### Aliases
+
+If you want to rename a field but you don't want to reindex all documents, you can define an [alias](https://www.elastic.co/guide/en/elasticsearch/reference/master/aliases.html).
+
+Besides field aliases, Elasticsearch also support index aliases.
+
+### Multi-field mappings
+
+If you want to field to be searchable (`text`) and aggregate on it (`keyword`) at the same time, you need to map it to two data types at the same time.
+
+```
+PUT /recipes
+{
+  "mappings": {
+    "properties": {
+      "description" {
+        "type": "text"
+      },
+      "ingredients": {
+        "type": "text",
+        "fields": {
+          "keyword_ix": {
+            "type": "keyword"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+In this example an additional inverted index named `ingredients.keyword_ix` is created. This index contains the ingredients unmodified values (not lowercased) and is suitable for exact matching and sorting.
+
+### ECS
+
+ECS or the [Elastic Common Schema](https://www.elastic.co/guide/en/ecs/current/ecs-reference.html) is an open source specification that defines a common set of fields to be used when storing event data in Elasticsearch, such as logs and metrics.
+
+An example are the [Geo Fields](https://www.elastic.co/guide/en/ecs/current/ecs-geo.html).
+
+ECS is used across the Elastic Stack. But it provides fields only for events. For non-events (regular application data like products, employees, etc.) it is not recommended to use ECS (but you could).
+
+### Stemming 
+
+[Stemming](https://www.elastic.co/guide/en/elasticsearch/reference/current/stemming.html) brings back a word to its root form to make it searchable.
+
+Regular verbs and nouns are easy to stem (bottles -> bottle, walked -> walk).
+
+For irregular verbs and nouns you may need to configure additional dictionary stemmers.
+
+### Stop words
+
+[Stop words](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-stop-tokenfilter.html) are words that have no value for relevance scoring.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+If we want the following search terms to match the above sentence:
+
+ * three -> 3
+ * travelling (British) -> traveling (US)
+ * pigs -> PIGS
+ * brwon -> brown ([fuzzy](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/query-dsl-fuzzy-query.html))
+ * cafe -> café! (diacritics, punctuation)
+
+
+
+
+
+      
