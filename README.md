@@ -2,6 +2,10 @@
 
 My notes of the Udemy course 'Complete Guide to Elasticsearch'
 
+
+
+
+
 ## Section 2: Getting started
 
  * ELK Stack: Elastic / Logstash / Kibana
@@ -74,6 +78,10 @@ Benefits of using Kibana:
  * autocomplete
  * automatic HTTP headers
  * formatted output
+
+
+
+
 
 ## Section 3: Managing Documents
 
@@ -213,6 +221,8 @@ Optimistic concurrency control can be realized using the `_seq_no` and `_primary
 This [example](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Managing%20Documents/optimistic-concurrency-control.md) illustrates how to use the `if_primary_term` and `if_seq_no` query parameters.
 
 This form of optimistic locking is used by elasticsearch when it performs an [Update by Query](elastic.co/guide/en/elasticsearch/reference/current/docs-update-by-query.html) (which works by first taking a snapshot, and then updating the documents one by one).
+
+
 
 
 
@@ -535,36 +545,90 @@ For irregular verbs and nouns you may need to configure additional dictionary st
 
 
 
+## Section 5: Searching
+
+ * [Search API](https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html)
+ * [Query DSL](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html)
+
+
+### Term level queries
+
+[term level queries](https://www.elastic.co/guide/en/elasticsearch/reference/current/term-level-queries.html) are used for exact queries (enums, IP & email addresses, ..)
+ 
+They can be used with several data types like `keyword`, `long`, `date`, `boolean`, .. (but NOT with `text`).
+
+The search terms of term level queries are not analyzed.
+
+#### Examples
+
+* [term[s]](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/searching-for-terms.md)
+* [ids](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/retrieving-documents-by-ids.md)
+* [range](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/range-searches.md)
+* [prefix/wildcard/regex](https://github.com/codingexplained/complete-guide-to-elasticsearch/tree/master/Searching%20for%20Data)
+  * don't do term level queries with wildcards in the beginning (for the same reason that you don't do `like '%term'` SQL queries)
+  * Elasticsearch uses Apache Lucene's [regular expression syntax](https://www.elastic.co/guide/en/elasticsearch/reference/current/regexp-syntax.html)
+  * these 3 query types support a parameter `"case_insensitive": true`
+* [exists](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/querying-by-field-existence.md)
+  * Only missing fields and fields with value `null` or `[]` or considered missing. Value `""` is considered existing.
+  * NB: If a `null_value` parameter was specified for a field, field instances with this `null_value` value are considered existing !!!
+  * when the `index` mapping parameter is set to `false` teh `exists` query will also yield no result
+  * same for [`ignore_above`](https://www.elastic.co/guide/en/elasticsearch/reference/current/ignore-above.html) and [`ignore_malformed`](https://www.elastic.co/guide/en/ elasticsearch/reference/current/ignore-malformed.html)
+  * the inverse (exists not) has no dedicated query; you must a `bool` query with `must_not` to achieve that
+
+### Full text queries
+
+[full text queries](https://www.elastic.co/guide/en/elasticsearch/reference/current/full-text-queries.html)
+
+* are analyzed (term level queries are not)
+* should not be applied on `keyword` fields (because those were not analyzed, and for instance not lowercased)
+
+#### Examples
+
+* [match](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/the-match-query.md)
+* [multi_match](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/searching-multiple-fields.md)
+  * [Reference](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-multi-match-query.html)
+  * the default type is `best_fields` which means that the result will be ordered by the relevance score of the field with the highest score within a document; you can use a [tie-breaker](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-multi-match-query.html#type-best-fields) if you want to (partially) include the score of other matching fields as well.
+* [match_phrase](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/phrase-searches.md)
+  * [Reference](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-match-query-phrase.html)
+  * used to find exact phrases within unstructured text; Elasticsearch stores term positions in the inverted index to support this
+
+### Relevance scoring
+
+[Relevance tuning](https://www.elastic.co/guide/en/app-search/current/relevance-tuning-guide.html)
+
+### Compound queries
+
+All the above queries are so-called _leaf queries_. 
+
+A [compound query](https://www.elastic.co/guide/en/elasticsearch/reference/current/compound-queries.html) wraps other compound queries and/or leaf queries.
+
+An example is the [bool](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-bool-query.html) query. It can have the following clauses:
+* `must`: must appear in matching documents
+* `should`: 
+  * if used together with other type of clauses, a matching `should` contributes to the score, but the should-clause is not required to match
+  * if the `bool` query only contains `should` clauses, at least of them __must__ match
+  * use `minimum_should_match` parameter to specify how many of the `should` clauses should match for a document to be returned
+* `must_not`: 
+* `filter`: like `must` but ignores relevance scores
+  * makes sense: you first filter out irrelevant documents (and do not care yet about the score of what remains) and then use other query clauses (`must`, `should`, ..) to sort the remaining documents
+  * improves performance
+
+[examples](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/querying-with-boolean-logic.md)
+
+### Nested queries
+
+[nested fields](https://www.elastic.co/guide/en/elasticsearch/reference/current/nested.html) (arrays of objects) can only be queried with a [nested query](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-nested-query.html). If you try to query nested fields with an ordinary `bool` or `match` query or whatever, it will yield unpredictable results!
+
+Examples
+* [nested](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/querying-nested-objects.md)
+* [nested / inner_hits](https://github.com/codingexplained/complete-guide-to-elasticsearch/blob/master/Searching%20for%20Data/nested-inner-hits.md)
+  * includes an extra `inner_hits` object containing a list with all the nested objects that matched the query.
+
+And
+* An index can contain max. 50 nested fields (this max. can be increased with index.mapping.nested_fields.limit).
+* A document can contain max. 10,000 nested documents (across all nested fields) to prevent OOM errors.
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-If we want the following search terms to match the above sentence:
-
- * three -> 3
- * travelling (British) -> traveling (US)
- * pigs -> PIGS
- * brwon -> brown ([fuzzy](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/query-dsl-fuzzy-query.html))
- * cafe -> café! (diacritics, punctuation)
-
-
-
-
-
-      

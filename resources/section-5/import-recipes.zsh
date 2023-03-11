@@ -2,5 +2,5 @@
 curl --cacert ../certificates/es01.crt \
   -u elastic \
   -H "Content-Type: application/x-ndjson" \
-  -XPOST https://localhost:9211/products/_bulk \
-  --data-binary "@products-bulk.json"
+  -XPOST https://localhost:9211/recipes/_bulk \
+  --data-binary "@recipes-bulk.json"
