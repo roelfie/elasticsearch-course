@@ -632,3 +632,198 @@ And
 
 
 
+
+## Section 6: Joining queries
+
+Elasticsearch is not optimized for joining data like relational database. It does offer some simple join functionality.
+
+Scroll to the end of this chapter (terms lookup mechanism) for cross-index joins...
+
+### Defining a relationship mapping
+
+You can define a parent-child relationship between documents in an index by creating a [field of type `join`](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/parent-join.html).
+
+For example, the following means that a department can have multiple employees:
+```
+PUT department/_mapping
+{
+  "properties": {
+    "join_field": {
+      "type": "join",
+      "relations": {
+        "department": "employee"
+      }
+    }
+  }
+}
+```
+
+Or multiple employees and multiple locations:
+```
+"relations": {
+  "department": ["employee", "location"]
+} 
+```
+
+__NB: The name `join_field` is arbitrary. We could have chosen any other name. The only thing that matters is `"type": "join"`.__
+
+### Adding parent documents
+
+You must specify in the `join_field` what type of document you're adding:
+
+```
+POST department/_doc/101
+{
+  "name": "Research",
+  "join_field": {
+    "name": "department"
+  }
+}
+```
+
+Or (short form):
+```
+POST department/_doc/102
+{
+  "name": "Development",
+  "join_field": "department"
+}
+```
+
+### Adding child documents
+
+In addition to specifying the child type in the `join_field` we must also specify query parameter `?routing=parent_id` to ensure that the child document is stored in the same shard as its parent.
+
+```
+POST department/_doc/101001?routing=101
+{
+  "name": "Jane",
+  "join_field": {
+    "name": "employee",
+    "parent": "101"
+  }
+}
+
+POST department/_doc/102001?routing=102
+{
+  "name": "John",
+  "join_field": {
+    "name": "employee",
+    "parent": "102"
+  }
+}
+```
+
+### Return child documents based on parent id
+
+Return child documents with a query of type [`parent_id`](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-parent-id-query.html):
+
+```
+GET department/_search
+{
+  "query": {
+    "parent_id": {
+      "type": "employee",
+      "id": "101"
+    }
+  }
+}
+```
+
+### Return child documents based on parent query
+
+Return child documents with an arbitrary query on the parent with [`has_parent`](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-has-parent-query.html):
+
+```
+GET department/_search
+{
+  "query": {
+    "has_parent": {
+      "parent_type": "department",
+      "query": {
+        "match": {
+          "name": "Development"
+        }
+      }
+    }
+  }
+}
+```
+
+### Return parent documents based on child query
+
+The opposite direction with [`has_child`](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-has-child-query.html)
+
+```
+GET department/_search
+{
+  "query": {
+    "has_child": {
+      "type": "employee",
+      "score_mode": "sum", 
+      "query": {
+        "match_phrase_prefix": {
+          "name": "Jo"
+        }
+      }
+    }
+  }
+}
+```
+
+### Multi-level relations
+
+```
+PUT company/_mapping
+{
+  "properties": {
+    "join_field": {
+      "type": "join",
+      "relations": {
+        "company": "department",
+        "department": "employee"
+      }
+    }
+  }
+}
+```
+
+### Terms lookup mechanism (cross index searching)
+
+The terms lookup mechanism is the only mechanism to join across different indices.
+
+Consider an entity `site`. Sites can be grouped into `collection`s. A collection can contain many sites, and one site can be in many collections.
+
+Suppose a `collection` has a field `sites` which is an array holding its site ids. Then you can lookup a collection's sites in the `sites` index as follows:
+
+```
+GET sites/_search
+{
+  "query": {
+    "terms": {
+      "id": {
+        "index": "collections",
+        "type": "_doc",
+        "id": COLLECTION_ID,
+        "path": "sites"
+      }
+    }
+  }
+}
+```
+
+__NB: the site document has no knowledge of collections.__
+__NB2: the default limit for the number of terms is 65.000.__
+
+
+### Resources
+
+ * [Udemy examples](https://github.com/codingexplained/complete-guide-to-elasticsearch/tree/master/Joining%20Queries)
+ * [mapping `join` fields](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/parent-join.html)
+ * [joining queries](https://www.elastic.co/guide/en/elasticsearch/reference/current/joining-queries.html) (`parent_id`, `has_parent` and `has_Child`)
+ * [terms lookup mechanism](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/query-dsl-terms-query.html#query-dsl-terms-lookup)
+
+
+
+
+
