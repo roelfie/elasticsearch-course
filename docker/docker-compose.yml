@@ -1,9 +1,16 @@
 # Source: https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html#docker-compose-file
 version: "2.2"
 
+networks:
+  my-network:
+    external: true
+    name: ${NETWORK_NAME}
+
 services:
   setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    networks:
+      - my-network
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
     user: "0"
@@ -68,6 +75,8 @@ services:
       setup:
         condition: service_healthy
     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    networks:
+      - my-network
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
       - elastic-data01:/usr/share/elasticsearch/data
@@ -79,6 +88,7 @@ services:
       - cluster.initial_master_nodes=es01,es02,es03
       - discovery.seed_hosts=es02,es03
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - reindex.remote.whitelist=${REMOTE_ELASTICSEARCH_SERVER}:*
       - bootstrap.memory_lock=true
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
@@ -110,6 +120,8 @@ services:
     depends_on:
       - es01
     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    networks:
+      - my-network
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
       - elastic-data02:/usr/share/elasticsearch/data
@@ -118,6 +130,7 @@ services:
       - cluster.name=${CLUSTER_NAME}
       - cluster.initial_master_nodes=es01,es02,es03
       - discovery.seed_hosts=es01,es03
+      - reindex.remote.whitelist=${REMOTE_ELASTICSEARCH_SERVER}:*
       - bootstrap.memory_lock=true
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
@@ -149,6 +162,8 @@ services:
     depends_on:
       - es02
     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    networks:
+      - my-network
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
       - elastic-data03:/usr/share/elasticsearch/data
@@ -157,6 +172,7 @@ services:
       - cluster.name=${CLUSTER_NAME}
       - cluster.initial_master_nodes=es01,es02,es03
       - discovery.seed_hosts=es01,es02
+      - reindex.remote.whitelist=${REMOTE_ELASTICSEARCH_SERVER}:*
       - bootstrap.memory_lock=true
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
@@ -193,6 +209,8 @@ services:
       es03:
         condition: service_healthy
     image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    networks:
+      - my-network
     volumes:
       - certs:/usr/share/kibana/config/certs
       - kibana-data:/usr/share/kibana/data
