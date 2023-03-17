@@ -827,3 +827,160 @@ __NB2: the default limit for the number of terms is 65.000.__
 
 
 
+## Section 7: Controlling query results (sorting, paging)
+
+In the [common options](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/common-options.html) section you can find several options to control / filter / format the output of the Elasticsearch API.
+
+Below we discuss some of them.
+
+### Source filtering with `_source`
+
+You can specify what fields from the `_source` document you want returned with the [`_source`option](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/search-fields.html#source-filtering):
+
+```
+GET departments/_search
+{
+  "_source": false
+  "query": {
+    "match": {
+      ...
+    }
+  }
+}
+```
+
+or, using "includes" and "excludes":
+
+```
+GET departments/_search
+{
+  "_source": {
+    "includes": "employees.*",
+    "excludes": "employees.name"
+  }
+  "query": {
+    "match": {
+      ...
+    }
+  }
+}
+```
+
+### Response filtering with `filter_path`
+
+[Response filtering](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/common-options.html#common-options-response-filtering) can be used to reduce the response size.
+
+```
+GET recipes/_search?filter_path=took,hits.hits._id,hits.hits._score
+{
+  "query": {...}
+}
+```
+
+### Implementing paging / pagination
+
+#### Search API `from` and `size`
+
+The [search API](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/paginate-search-results.html) offers `from` and `size` query parameters.
+
+This example returns the 3rd page (of size 20):
+
+```
+GET /_search
+{
+  "from": 40,
+  "size": 20,
+  "query": {
+    "match": { ... }
+  }
+}
+```
+
+or
+
+```
+GET /_search?size=20&from=40
+{
+  "query": {
+    "match": { ... }
+  }
+}
+```
+
+__NB1: By default, you cannot use from and size to page through more than 10,000 hits. If you need to page through more than 10,000 hits, use `search_after`.__
+
+Deep paging consumes a lot of memory! 
+
+__NB2: Elasticsearch uses Lucene’s internal doc IDs as tie-breakers. These internal doc IDs can be completely different across replicas of the same data. When paging search hits, you might occasionally see that documents with the same sort values are not ordered consistently.__
+
+#### Search after
+
+When you specify a `sort` in your query, each document will be assigned a sort value. Sorting is based on this sort value, and the sort value is included in the response in the `sort` field.
+
+Instead of paging using `from`, you can use the [search_after](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/paginate-search-results.html#search-after) element. In the `search_after` field you specify the sort values from the last hit from the previous page. Example:
+
+```
+GET twitter/_search
+{
+    "query": {
+        "match": {
+            "title": "elasticsearch"
+        }
+    },
+    "search_after": [1463538857, "654323"],
+    "sort": [
+        {"date": "asc"},
+        {"tie_breaker_id": "asc"}
+    ]
+}
+```
+
+
+#### Sorting
+
+[Sorting search results](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/sort-search-results.html)
+
+The default sort order is by relevance score. This is equivalent to `"score": "_score"`.
+
+You can sort on multiple fields (and even use the relevance score as secondary sort order):
+
+```
+GET /my-index-000001/_search
+{
+  "sort" : [
+    { "name" : "asc" },
+    { "age" : "desc" },
+    "_score"
+  ],
+  "query" : {
+    "term" : { ... }
+  }
+}
+```
+
+Special sort fields:
+ * `_score` : relevance score
+ * `_doc`: index order
+
+Ordering by `_doc` has no real use cases (the order within an index is meaningless) but it could be used as a secondary order to achieve reliable pagination (?).
+
+#### Sorting on multi-valued fields
+
+You can also sort on fields that can contain multiple values.
+
+You can specify with the [sort `mode`](https://www.elastic.co/guide/en/elasticsearch/reference/8.6/sort-search-results.html#_sort_mode_option) how to calculate the sort value of a multi-valued field. Possible modes:
+ * `min`
+ * `max`
+ * `sum`
+ * `avg`
+ * `median`
+
+For example, for `"field": ["A", "Z"]` with mode `max`, it will use the "Z" for sorting.
+
+And for `"field": [0.0, 100.0]` with mode `avg` it will use `50.0` for sorting.
+
+
+
+
+
+
